@@ -16,8 +16,15 @@ export class GetOnBoardAdapter {
 
     for (const category of this.categories) {
       const response = await axios.get(
-        `https://www.getonbrd.com/api/v0/categories/${category}/jobs?per_page=20&page=1&expand=["company"]`
-      );
+        `https://www.getonbrd.com/api/v0/categories/${category}/jobs`,
+        {
+            params: {
+            per_page: 20,
+            page: 1,
+            expand: '["company"]'
+            }
+        }
+        );
 
       const jobs = response.data.data;
 

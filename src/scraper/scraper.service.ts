@@ -89,17 +89,26 @@ export class ScraperService {
         return stacks;
     }
       // Mapeo del senioriy
-    private mapGetOnBoardSeniority(value: string | null) {
-        if (!value) return null;
+    private mapGetOnBoardSeniority(value: any) {
+      if (!value) return null;
 
-        const lower = value.toLowerCase();
-
-        if (lower.includes("junior")) return "JUNIOR";
-        if (lower.includes("semi")) return "SEMI";
-        if (lower.includes("senior")) return "SENIOR";
-
-        return null;
+      // Si viene como objeto tipo { data: { attributes: { name: "Senior" } } }
+      if (typeof value === "object") {
+        value = value?.data?.attributes?.name ?? null;
       }
+
+      if (typeof value !== "string") return null;
+
+      const lower = value.toLowerCase();
+
+      if (lower.includes("junior")) return "JUNIOR";
+      if (lower.includes("semi")) return "SEMI";
+      if (lower.includes("senior")) return "SENIOR";
+      if (lower.includes("lead")) return "LEAD";
+
+      return null;
+    }
+
 
 
       async scrapeArbeitnow() {
@@ -177,7 +186,7 @@ export class ScraperService {
         source: "getonboard",
         url: job.links.public_url,
         description: attr.description ?? null,
-        publishedAt: new Date(attr.published_at * 1000),
+        publishedAt: attr.published_at ? new Date(attr.published_at * 1000) : null,
         stacks,
       };
     }
