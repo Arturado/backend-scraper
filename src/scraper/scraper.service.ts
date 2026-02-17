@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { Cron } from '@nestjs/schedule';
+import { GetOnBoardAdapter } from "../sources/getonboard.adapter";
+
 
 
 @Injectable()
@@ -130,6 +132,16 @@ export class ScraperService {
       return {
         totalFetched: jobs.length,
         inserted,
+      };
+    }
+
+    async testGetOnBoard() {
+    const adapter = new GetOnBoardAdapter();
+    const jobs = await adapter.fetchRawJobs();
+
+      return {
+        total: jobs.length,
+        first: jobs[0],
       };
     }
 
