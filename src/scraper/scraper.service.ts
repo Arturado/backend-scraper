@@ -88,6 +88,19 @@ export class ScraperService {
 
         return stacks;
     }
+      // Mapeo del senioriy
+    private mapGetOnBoardSeniority(value: string | null) {
+        if (!value) return null;
+
+        const lower = value.toLowerCase();
+
+        if (lower.includes("junior")) return "JUNIOR";
+        if (lower.includes("semi")) return "SEMI";
+        if (lower.includes("senior")) return "SENIOR";
+
+        return null;
+      }
+
 
       async scrapeArbeitnow() {
       const response = await axios.get('https://www.arbeitnow.com/api/job-board-api');
@@ -135,18 +148,56 @@ export class ScraperService {
       };
     }
 
-    async testGetOnBoard() {
-    const adapter = new GetOnBoardAdapter();
-    const jobs = await adapter.fetchRawJobs();
+    // Normalizar atributos de  getonboard para salvar en Prisma 
+
+    private normalizeGetOnBoardJob(job: any) {
+      const attr = job.attributes;
+
+      const company =
+        attr.company?.data?.attributes?.name ?? "Unknown";
+
+      const combinedText = `
+        ${attr.title}
+        ${attr.description ?? ""}
+        ${attr.functions ?? ""}
+        ${attr.desirable ?? ""}
+      `;
+
+      const stacks = this.detectStacks(combinedText);
 
       return {
-        total: jobs.length,
-        first: jobs[0],
+        title: attr.title,
+        company,
+        country: attr.country ?? null,
+        remoteType: attr.remote === true ? "REMOTE" : "ONSITE",
+        seniority: this.mapGetOnBoardSeniority(attr.seniority),
+        salaryMin: attr.min_salary ?? null,
+        salaryMax: attr.max_salary ?? null,
+        currency: "USD", //  RECORDATORIO PARA MI: por ahora así luego hacerlo dinamico CLP/BR/Args/Euros etc ***
+        source: "getonboard",
+        url: job.links.public_url,
+        description: attr.description ?? null,
+        publishedAt: new Date(attr.published_at * 1000),
+        stacks,
       };
     }
 
 
+    async testGetOnBoard() {
+    const adapter = new GetOnBoardAdapter();
+    const jobs = await adapter.fetchRawJobs();
 
+    const normalized = this.normalizeGetOnBoardJob(jobs[0]);
+
+    return {
+      total: jobs.length,
+      normalizedExample: normalized,
+    };
+}
+
+    
+
+  
 
     @Cron('0 */6 * * *') // Cron Cada 6 Horas + try para que no se solapen 
     async handleCron() {
