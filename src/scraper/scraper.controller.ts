@@ -5,24 +5,9 @@ import { ScraperService } from './scraper.service';
 export class ScraperController {
   constructor(private readonly scraperService: ScraperService) {}
 
-  @Get('remoteok')
-  runRemoteOK() {
-    return this.scraperService.scrapeRemoteOK();
+  // Ejecuta todos los sources manualmente
+  @Get('run')
+  async runAll() {
+    return this.scraperService.scrapeAllSources();
   }
-
-  @Get('arbeitnow') 
-  runArbeitnow() {
-    return this.scraperService.scrapeArbeitnow();
-  }
-
-  @Get("getonboard")
-  runGetOnBoard() {
-    return this.scraperService.scrapeGetOnBoard();
-  }
-
-  @Get("test-getonboard")
-  runTest() {
-    return this.scraperService.testGetOnBoard();
-  }
-  
 }
