@@ -193,16 +193,63 @@ export class ScraperService {
 
 
     async testGetOnBoard() {
-    const adapter = new GetOnBoardAdapter();
-    const jobs = await adapter.fetchRawJobs();
+      const adapter = new GetOnBoardAdapter();
+      const jobs = await adapter.fetchRawJobs();
+    
+      const normalized = this.normalizeGetOnBoardJob(jobs[0]);
+          return {
+            total: jobs.length,
+            normalizedExample: normalized,
+          };
+    }
 
-    const normalized = this.normalizeGetOnBoardJob(jobs[0]);
+    // Getonboard 
+    async scrapeGetOnBoard() {
+      const adapter = new GetOnBoardAdapter();
+      const rawJobs = await adapter.fetchRawJobs();
 
-    return {
-      total: jobs.length,
-      normalizedExample: normalized,
-    };
-}
+      let inserted = 0;
+
+      for (const job of rawJobs) {
+        try {
+          const normalized = this.normalizeGetOnBoardJob(job);
+
+          await this.prisma.job.create({
+            data: {
+              title: normalized.title,
+              company: normalized.company,
+              country: normalized.country,
+              remoteType: normalized.remoteType,
+              seniority: normalized.seniority ?? undefined,
+              salaryMin: normalized.salaryMin,
+              salaryMax: normalized.salaryMax,
+              currency: normalized.currency,
+              source: normalized.source,
+              url: normalized.url,
+              description: normalized.description,
+              publishedAt: normalized.publishedAt,
+              stacks: {
+                connectOrCreate: normalized.stacks.map(stack => ({
+                  where: { name: stack },
+                  create: { name: stack },
+                })),
+              },
+            },
+          });
+
+          inserted++;
+        } catch (error: any) {
+          if (error.code !== "P2002") {
+            console.error(error);
+          }
+        }
+      }
+
+      return {
+        totalFetched: rawJobs.length,
+        inserted,
+      };
+    }
 
     
 

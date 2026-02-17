@@ -20,4 +20,8 @@ export class ScraperController {
     return this.scraperService.testGetOnBoard();
   }
 
+  @Get("getonboard")
+  runGetOnBoard() {
+    return this.scraperService.scrapeGetOnBoard();
+  }
 }
