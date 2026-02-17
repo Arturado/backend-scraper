@@ -89,8 +89,9 @@ export class ScraperService {
 
       async scrapeArbeitnow() {
       const response = await axios.get('https://www.arbeitnow.com/api/job-board-api');
-
       const jobs = response.data.data;
+
+      let inserted = 0;
 
       for (const job of jobs) {
         try {
@@ -118,13 +119,20 @@ export class ScraperService {
             },
           });
 
+          inserted++;
         } catch (error: any) {
           if (error.code !== 'P2002') {
             console.error(error);
           }
         }
       }
+
+      return {
+        totalFetched: jobs.length,
+        inserted,
+      };
     }
+
 
 
 
