@@ -1,6 +1,9 @@
 import axios from "axios";
+import { RawJobSource } from "./source.interface";
 
-export class GetOnBoardAdapter {
+export class GetOnBoardAdapter implements RawJobSource {
+  name = "getonboard";
+
   private categories = [
     "programming",
     "data-science-analytics",
@@ -11,23 +14,22 @@ export class GetOnBoardAdapter {
     "digital-marketing"
   ];
 
-  async fetchRawJobs() {
+  async fetchRawJobs(): Promise<any[]> {
     let allJobs: any[] = [];
 
     for (const category of this.categories) {
       const response = await axios.get(
         `https://www.getonbrd.com/api/v0/categories/${category}/jobs`,
         {
-            params: {
+          params: {
             per_page: 20,
             page: 1,
             expand: '["company"]'
-            }
+          }
         }
-        );
+      );
 
       const jobs = response.data.data;
-
       allJobs.push(...jobs);
     }
 
