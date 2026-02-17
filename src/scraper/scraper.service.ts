@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { RemoteType, Seniority } from "@prisma/client";
 import { Cron } from '@nestjs/schedule';
 import { GetOnBoardAdapter } from "../sources/getonboard.adapter";
+
 
 
 
@@ -89,10 +91,9 @@ export class ScraperService {
         return stacks;
     }
       // Mapeo del senioriy
-    private mapGetOnBoardSeniority(value: any) {
+    private mapGetOnBoardSeniority(value: any): Seniority | null {
       if (!value) return null;
 
-      // Si viene como objeto tipo { data: { attributes: { name: "Senior" } } }
       if (typeof value === "object") {
         value = value?.data?.attributes?.name ?? null;
       }
@@ -101,13 +102,14 @@ export class ScraperService {
 
       const lower = value.toLowerCase();
 
-      if (lower.includes("junior")) return "JUNIOR";
-      if (lower.includes("semi")) return "SEMI";
-      if (lower.includes("senior")) return "SENIOR";
-      if (lower.includes("lead")) return "LEAD";
+      if (lower.includes("junior")) return Seniority.JUNIOR;
+      if (lower.includes("semi")) return Seniority.SEMI;
+      if (lower.includes("senior")) return Seniority.SENIOR;
+      if (lower.includes("lead")) return Seniority.LEAD;
 
       return null;
     }
+
 
 
 
@@ -178,7 +180,7 @@ export class ScraperService {
         title: attr.title,
         company,
         country: attr.country ?? null,
-        remoteType: attr.remote === true ? "REMOTE" : "ONSITE",
+        remoteType: attr.remote === true ? RemoteType.REMOTE : RemoteType.ONSITE,
         seniority: this.mapGetOnBoardSeniority(attr.seniority),
         salaryMin: attr.min_salary ?? null,
         salaryMax: attr.max_salary ?? null,
