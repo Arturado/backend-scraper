@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { Cron } from '@nestjs/schedule';
+
 
 @Injectable()
 export class ScraperService {
@@ -85,4 +87,61 @@ export class ScraperService {
         return stacks;
     }
 
+      async scrapeArbeitnow() {
+      const response = await axios.get('https://www.arbeitnow.com/api/job-board-api');
+
+      const jobs = response.data.data;
+
+      for (const job of jobs) {
+        try {
+          const combinedText = `${job.title} ${job.description ?? ""}`;
+
+          const seniority = this.detectSeniority(combinedText);
+          const stacks = this.detectStacks(combinedText);
+
+          await this.prisma.job.create({
+            data: {
+              title: job.title,
+              company: job.company_name,
+              remoteType: job.remote === true ? "REMOTE" : "ONSITE",
+              source: "arbeitnow",
+              url: job.url,
+              description: job.description,
+              publishedAt: new Date(job.created_at),
+              seniority: seniority ?? undefined,
+              stacks: {
+                connectOrCreate: stacks.map(stack => ({
+                  where: { name: stack },
+                  create: { name: stack },
+                })),
+              },
+            },
+          });
+
+        } catch (error: any) {
+          if (error.code !== 'P2002') {
+            console.error(error);
+          }
+        }
+      }
+    }
+
+
+
+    @Cron('0 */6 * * *') // Cron Cada 6 Horas + try para que no se solapen 
+    async handleCron() {
+      console.log("Running scheduled scrape...");
+
+      try {
+        await this.scrapeRemoteOK();
+      } catch (e) {
+        console.error("RemoteOK failed", e);
+      }
+
+      try {
+        await this.scrapeArbeitnow();
+      } catch (e) {
+        console.error("Arbeitnow failed", e);
+      }
+    }
 }
