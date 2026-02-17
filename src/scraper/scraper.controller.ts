@@ -6,7 +6,12 @@ export class ScraperController {
   constructor(private readonly scraperService: ScraperService) {}
 
   @Get('remoteok')
-    runRemoteOK() {
+  runRemoteOK() {
     return this.scraperService.scrapeRemoteOK();
-    }
+  }
+
+  @Get('arbeitnow') 
+  runArbeitnow() {
+    return this.scraperService.scrapeArbeitnow();
+  }
 }
