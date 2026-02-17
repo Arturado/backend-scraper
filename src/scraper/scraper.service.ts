@@ -1,276 +1,235 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { RemoteType, Seniority } from "@prisma/client";
 import { Cron } from '@nestjs/schedule';
+
+import { RawJobSource } from "../sources/source.interface";
+import { RemoteOKAdapter } from "../sources/remoteok.adapter";
+import { ArbeitnowAdapter } from "../sources/arbeitnow.adapter";
 import { GetOnBoardAdapter } from "../sources/getonboard.adapter";
-
-
-
 
 @Injectable()
 export class ScraperService {
+
   constructor(private prisma: PrismaService) {}
 
-  async scrapeRemoteOK() {
-    const response = await axios.get('https://remoteok.com/api');
+  // ===============================
+  //  Registered job sources
+  // ===============================
+  // Aquí definimos todas las fuentes del sistema.
+  // Agregar una nueva fuente solo requiere crear un nuevo Adapter.
+  private sources: RawJobSource[] = [
+    new RemoteOKAdapter(),
+    new ArbeitnowAdapter(),
+    new GetOnBoardAdapter(),
+  ];
 
-    const data = response.data;
+  // ===============================
+  //  Cron job (ejecución automática)
+  // ===============================
+  // Ejecuta todas las fuentes cada 6 horas.
+  @Cron('0 */6 * * *')
+  async handleCron() {
+    console.log("Running scheduled scrape...");
+    await this.scrapeAllSources();
+  }
 
-    // El primer elemento es metadata
-    const jobs = data.slice(1);
+  // ===============================
+  //  Ejecutar todas las fuentes
+  // ===============================
+  async scrapeAllSources() {
+    for (const source of this.sources) {
+      try {
+        const rawJobs = await source.fetchRawJobs();
+        console.log(`Fetched ${rawJobs.length} jobs from ${source.name}`);
 
+        await this.processRawJobs(rawJobs, source.name);
+
+      } catch (e) {
+        console.error(`${source.name} failed`, e);
+      }
+    }
+  }
+
+  // ===============================
+  // Procesar y guardar jobs
+  // ===============================
+  // Normaliza y guarda en Prisma
+  private async processRawJobs(rawJobs: any[], sourceName: string) {
     let inserted = 0;
 
-    for (const job of jobs) {
+    for (const raw of rawJobs) {
       try {
-        const combinedText = `${job.position} ${job.description ?? ""}`;
-
-        const seniority = this.detectSeniority(combinedText);
-        const stacks = this.detectStacks(combinedText);
+        const normalized = this.normalizeBySource(raw, sourceName);
 
         await this.prisma.job.create({
-        data: {
-            title: job.position,
-            company: job.company,
-            remoteType: "REMOTE", // para consumir en surce mantener el remoteok 
-            source: "remoteok",
-            url: `https://remoteok.com/${job.slug}`,
-            description: job.description,
-            publishedAt: new Date(job.date),
-            seniority: seniority ?? undefined,
-
+          data: {
+            ...normalized,
+            seniority: normalized.seniority ?? undefined,
             stacks: {
-            connectOrCreate: stacks.map(stack => ({
+              connectOrCreate: normalized.stacks.map(stack => ({
                 where: { name: stack },
                 create: { name: stack },
-            })),
+              })),
             },
-        },
+          },
         });
 
         inserted++;
+
       } catch (error: any) {
-        if (error.code !== 'P2002') {
+        // Ignoramos duplicados (url unique)
+        if (error.code !== "P2002") {
           console.error(error);
         }
       }
     }
 
+    console.log(`Inserted ${inserted} jobs from ${sourceName}`);
+  }
+
+  
+  //  Normalizador por fuente
+  
+  private normalizeBySource(raw: any, sourceName: string) {
+    switch (sourceName) {
+      case "remoteok":
+        return this.normalizeRemoteOK(raw);
+
+      case "arbeitnow":
+        return this.normalizeArbeitnow(raw);
+
+      case "getonboard":
+        return this.normalizeGetOnBoard(raw);
+
+      default:
+        throw new Error(`Unknown source: ${sourceName}`);
+    }
+  }
+
+  
+  //  Normalización RemoteOK
+  
+  private normalizeRemoteOK(job: any) {
+    const combinedText = `${job.position} ${job.description ?? ""}`;
+
     return {
-      totalFetched: jobs.length,
-      inserted,
+      title: job.position,
+      company: job.company,
+      remoteType: RemoteType.REMOTE,
+      source: "remoteok",
+      url: `https://remoteok.com/${job.slug}`,
+      description: job.description ?? null,
+      publishedAt: job.date ? new Date(job.date) : null,
+      seniority: this.detectSeniority(combinedText),
+      stacks: this.detectStacks(combinedText),
     };
   }
 
-    private detectSeniority(text: string): any {
-        const lower = text.toLowerCase();
+  
+  //  Normalización Arbeitnow
+  
+  private normalizeArbeitnow(job: any) {
+    const combinedText = `${job.title} ${job.description ?? ""}`;
 
-        if (lower.includes("senior")) return "SENIOR";
-        if (lower.includes("junior")) return "JUNIOR";
-        if (lower.includes("lead")) return "LEAD";
-        if (lower.includes("mid")) return "SEMI";
-
-        return null;
-    }
-
-    private detectStacks(text: string): string[] {
-        const lower = text.toLowerCase();
-        const stacks: string[] = [];
-
-        if (lower.includes("react")) stacks.push("React");
-        if (lower.includes("next")) stacks.push("Next.js");
-        if (lower.includes("node")) stacks.push("Node.js");
-        if (lower.includes("nestjs")) stacks.push("NestJS");
-        if (lower.includes("wordpress")) stacks.push("WordPress");
-        if (lower.includes("salesforce")) stacks.push("Salesforce");
-        if (lower.includes("python")) stacks.push("Python");
-        if (lower.includes(".net")) stacks.push(".NET");
-        if (lower.includes("java")) stacks.push("Java");
-
-        return stacks;
-    }
-      // Mapeo del senioriy
-    private mapGetOnBoardSeniority(value: any): Seniority | null {
-      if (!value) return null;
-
-      if (typeof value === "object") {
-        value = value?.data?.attributes?.name ?? null;
-      }
-
-      if (typeof value !== "string") return null;
-
-      const lower = value.toLowerCase();
-
-      if (lower.includes("junior")) return Seniority.JUNIOR;
-      if (lower.includes("semi")) return Seniority.SEMI;
-      if (lower.includes("senior")) return Seniority.SENIOR;
-      if (lower.includes("lead")) return Seniority.LEAD;
-
-      return null;
-    }
-
-
-
-
-      async scrapeArbeitnow() {
-      const response = await axios.get('https://www.arbeitnow.com/api/job-board-api');
-      const jobs = response.data.data;
-
-      let inserted = 0;
-
-      for (const job of jobs) {
-        try {
-          const combinedText = `${job.title} ${job.description ?? ""}`;
-
-          const seniority = this.detectSeniority(combinedText);
-          const stacks = this.detectStacks(combinedText);
-
-          await this.prisma.job.create({
-            data: {
-              title: job.title,
-              company: job.company_name,
-              remoteType: job.remote === true ? "REMOTE" : "ONSITE",
-              source: "arbeitnow",
-              url: job.url,
-              description: job.description,
-              publishedAt: new Date(job.created_at),
-              seniority: seniority ?? undefined,
-              stacks: {
-                connectOrCreate: stacks.map(stack => ({
-                  where: { name: stack },
-                  create: { name: stack },
-                })),
-              },
-            },
-          });
-
-          inserted++;
-        } catch (error: any) {
-          if (error.code !== 'P2002') {
-            console.error(error);
-          }
-        }
-      }
-
-      return {
-        totalFetched: jobs.length,
-        inserted,
-      };
-    }
-
-    // Normalizar atributos de  getonboard para salvar en Prisma 
-
-    private normalizeGetOnBoardJob(job: any) {
-      const attr = job.attributes;
-
-      const company =
-        attr.company?.data?.attributes?.name ?? "Unknown";
-
-      const combinedText = `
-        ${attr.title}
-        ${attr.description ?? ""}
-        ${attr.functions ?? ""}
-        ${attr.desirable ?? ""}
-      `;
-
-      const stacks = this.detectStacks(combinedText);
-
-      return {
-        title: attr.title,
-        company,
-        country: attr.country ?? null,
-        remoteType: attr.remote === true ? RemoteType.REMOTE : RemoteType.ONSITE,
-        seniority: this.mapGetOnBoardSeniority(attr.seniority),
-        salaryMin: attr.min_salary ?? null,
-        salaryMax: attr.max_salary ?? null,
-        currency: "USD", //  RECORDATORIO PARA MI: por ahora así luego hacerlo dinamico CLP/BR/Args/Euros etc ***
-        source: "getonboard",
-        url: job.links.public_url,
-        description: attr.description ?? null,
-        publishedAt: attr.published_at ? new Date(attr.published_at * 1000) : null,
-        stacks,
-      };
-    }
-
-
-    async testGetOnBoard() {
-      const adapter = new GetOnBoardAdapter();
-      const jobs = await adapter.fetchRawJobs();
-    
-      const normalized = this.normalizeGetOnBoardJob(jobs[0]);
-          return {
-            total: jobs.length,
-            normalizedExample: normalized,
-          };
-    }
-
-    // Getonboard 
-    async scrapeGetOnBoard() {
-      const adapter = new GetOnBoardAdapter();
-      const rawJobs = await adapter.fetchRawJobs();
-
-      let inserted = 0;
-
-      for (const job of rawJobs) {
-        try {
-          const normalized = this.normalizeGetOnBoardJob(job);
-
-          await this.prisma.job.create({
-            data: {
-              title: normalized.title,
-              company: normalized.company,
-              country: normalized.country,
-              remoteType: normalized.remoteType,
-              seniority: normalized.seniority ?? undefined,
-              salaryMin: normalized.salaryMin,
-              salaryMax: normalized.salaryMax,
-              currency: normalized.currency,
-              source: normalized.source,
-              url: normalized.url,
-              description: normalized.description,
-              publishedAt: normalized.publishedAt,
-              stacks: {
-                connectOrCreate: normalized.stacks.map(stack => ({
-                  where: { name: stack },
-                  create: { name: stack },
-                })),
-              },
-            },
-          });
-
-          inserted++;
-        } catch (error: any) {
-          if (error.code !== "P2002") {
-            console.error(error);
-          }
-        }
-      }
-
-      return {
-        totalFetched: rawJobs.length,
-        inserted,
-      };
-    }
-
-    
+    return {
+      title: job.title,
+      company: job.company_name,
+      remoteType: job.remote === true ? RemoteType.REMOTE : RemoteType.ONSITE,
+      source: "arbeitnow",
+      url: job.url,
+      description: job.description ?? null,
+      publishedAt: job.created_at ? new Date(job.created_at) : null,
+      seniority: this.detectSeniority(combinedText),
+      stacks: this.detectStacks(combinedText),
+    };
+  }
 
   
+  //  Normalización GetOnBoard
+  
+  private normalizeGetOnBoard(job: any) {
+    const attr = job.attributes;
 
-    @Cron('0 */6 * * *') // Cron Cada 6 Horas + try para que no se solapen 
-    async handleCron() {
-      console.log("Running scheduled scrape...");
+    const combinedText = `
+      ${attr.title}
+      ${attr.description ?? ""}
+      ${attr.functions ?? ""}
+      ${attr.desirable ?? ""}
+    `;
 
-      try {
-        await this.scrapeRemoteOK();
-      } catch (e) {
-        console.error("RemoteOK failed", e);
-      }
+    return {
+      title: attr.title,
+      company: attr.company?.data?.attributes?.name ?? "Unknown",
+      country: attr.country ?? null,
+      remoteType: attr.remote === true ? RemoteType.REMOTE : RemoteType.ONSITE,
+      seniority: this.mapGetOnBoardSeniority(attr.seniority),
+      salaryMin: attr.min_salary ?? null,
+      salaryMax: attr.max_salary ?? null,
+      currency: "USD",
+      source: "getonboard",
+      url: job.links.public_url,
+      description: attr.description ?? null,
+      publishedAt: attr.published_at
+        ? new Date(attr.published_at * 1000)
+        : null,
+      stacks: this.detectStacks(combinedText),
+    };
+  }
 
-      try {
-        await this.scrapeArbeitnow();
-      } catch (e) {
-        console.error("Arbeitnow failed", e);
-      }
+  
+  //  Detectar seniority genérico
+ 
+  private detectSeniority(text: string): Seniority | null {
+    const lower = text.toLowerCase();
+
+    if (lower.includes("junior")) return Seniority.JUNIOR;
+    if (lower.includes("semi")) return Seniority.SEMI;
+    if (lower.includes("senior")) return Seniority.SENIOR;
+    if (lower.includes("lead")) return Seniority.LEAD;
+
+    return null;
+  }
+
+  
+  // Mapear seniority GetOnBoard
+ 
+  private mapGetOnBoardSeniority(value: any): Seniority | null {
+    if (!value) return null;
+
+    if (typeof value === "object") {
+      value = value?.data?.attributes?.name ?? null;
     }
+
+    if (typeof value !== "string") return null;
+
+    const lower = value.toLowerCase();
+
+    if (lower.includes("junior")) return Seniority.JUNIOR;
+    if (lower.includes("semi")) return Seniority.SEMI;
+    if (lower.includes("senior")) return Seniority.SENIOR;
+    if (lower.includes("lead")) return Seniority.LEAD;
+
+    return null;
+  }
+
+  
+  //  Detectar stacks
+
+  private detectStacks(text: string): string[] {
+    const lower = text.toLowerCase();
+    const stacks: string[] = [];
+
+    if (lower.includes("react")) stacks.push("React");
+    if (lower.includes("next")) stacks.push("Next.js");
+    if (lower.includes("node")) stacks.push("Node.js");
+    if (lower.includes("nestjs")) stacks.push("NestJS");
+    if (lower.includes("wordpress")) stacks.push("WordPress");
+    if (lower.includes("salesforce")) stacks.push("Salesforce");
+    if (lower.includes("python")) stacks.push("Python");
+    if (lower.includes(".net")) stacks.push(".NET");
+    if (lower.includes("java")) stacks.push("Java");
+
+    return stacks;
+  }
 }
