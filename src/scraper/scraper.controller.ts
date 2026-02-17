@@ -15,13 +15,14 @@ export class ScraperController {
     return this.scraperService.scrapeArbeitnow();
   }
 
-  @Get("test-getonboard")
-  runTest() {
-    return this.scraperService.testGetOnBoard();
-  }
-
   @Get("getonboard")
   runGetOnBoard() {
     return this.scraperService.scrapeGetOnBoard();
   }
+
+  @Get("test-getonboard")
+  runTest() {
+    return this.scraperService.testGetOnBoard();
+  }
+  
 }
