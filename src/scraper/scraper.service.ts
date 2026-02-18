@@ -139,7 +139,7 @@ export class ScraperService {
       source: "arbeitnow",
       url: job.url,
       description: job.description ?? null,
-      publishedAt: job.created_at ? new Date(job.created_at) : null,
+      publishedAt: job.created_at ? new Date(job.created_at * 1000) : null,
       seniority: this.detectSeniority(combinedText),
       stacks: this.detectStacks(combinedText),
     };
