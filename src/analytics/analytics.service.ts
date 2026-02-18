@@ -49,4 +49,24 @@ export class AnalyticsService {
      });
     }
 
+  async getJobsOverTime(days: number = 14) {
+    const result = await this.prisma.$queryRaw<
+      { date: string; count: bigint }[]
+    >`
+      SELECT 
+        DATE("publishedAt") as date,
+        COUNT(*) as count
+      FROM "Job"
+      WHERE "publishedAt" IS NOT NULL
+        AND "publishedAt" >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE("publishedAt")
+      ORDER BY DATE("publishedAt") ASC;
+    `;
+
+    return result.map(row => ({
+      date: row.date,
+      count: Number(row.count),
+    }));
+  }
+
 }
