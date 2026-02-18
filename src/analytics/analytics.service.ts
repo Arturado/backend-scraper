@@ -58,7 +58,7 @@ export class AnalyticsService {
         COUNT(*) as count
       FROM "Job"
       WHERE "publishedAt" IS NOT NULL
-        AND "publishedAt" >= NOW() - INTERVAL '${days} days'
+        AND "publishedAt" >= NOW() - (${days} * INTERVAL '1 day')
       GROUP BY DATE("publishedAt")
       ORDER BY DATE("publishedAt") ASC;
     `;
