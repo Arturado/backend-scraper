@@ -1,6 +1,8 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
+import { AuthGuard } from '@nestjs/passport';
 
+@UseGuards(AuthGuard('jwt'))   //  Protección global del controller
 @Controller('analytics')
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
@@ -20,10 +22,10 @@ export class AnalyticsController {
     return this.analyticsService.getSeniorityDistribution();
   }
 
-  @Get("jobs-over-time")
-  getJobsOverTime(@Query("days") days?: string) {
-    const parsedDays = days ? parseInt(days) : 14;
-    return this.analyticsService.getJobsOverTime(parsedDays);
+  @Get('jobs-over-time')
+  getJobsOverTime(@Query('days') days?: string) {
+    return this.analyticsService.getJobsOverTime(
+      days ? Number(days) : 30,
+    );
   }
-
 }
